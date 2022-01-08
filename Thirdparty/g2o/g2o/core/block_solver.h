@@ -118,6 +118,7 @@ namespace g2o {
        * in its destructor.
        */
       BlockSolver(LinearSolverType* linearSolver);
+      BlockSolver(std::unique_ptr<LinearSolverType> linearSolver);
       ~BlockSolver();
 
       virtual bool init(SparseOptimizer* optmizer, bool online = false);

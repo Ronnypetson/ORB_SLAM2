@@ -111,3 +111,8 @@ add_executable(mono_euroc
 Examples/Monocular/mono_euroc.cc)
 target_link_libraries(mono_euroc ${PROJECT_NAME})
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Examples/Epipolar)
+
+add_executable(tutorial_epipolar_slam
+Thirdparty/g2o/g2o/epipolar/tutorial_epipolar_slam.cpp)
+target_link_libraries(tutorial_epipolar_slam ${PROJECT_NAME})

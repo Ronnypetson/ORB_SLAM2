@@ -82,7 +82,8 @@ configure_file(config.h.in ${g2o_SOURCE_DIR}/config.h)
 INCLUDE_DIRECTORIES(
 ${g2o_SOURCE_DIR}/core
 ${g2o_SOURCE_DIR}/types
-${g2o_SOURCE_DIR}/stuff 
+${g2o_SOURCE_DIR}/stuff
+${g2o_SOURCE_DIR}/epipolar
 ${G2O_EIGEN3_INCLUDE})
 
 # Include the subdirectories
@@ -170,5 +171,20 @@ g2o/stuff/os_specific.c
 g2o/stuff/os_specific.h
 g2o/stuff/string_tools.cpp
 g2o/stuff/property.cpp       
-g2o/stuff/property.h       
+g2o/stuff/property.h
+#epipolar
+g2o/epipolar/simulator.cpp
+g2o/epipolar/g2o_tutorial_epipolar_slam_api.h
+g2o/epipolar/se3.cpp
+g2o/epipolar/simulator.h
+g2o/epipolar/types_tutorial_epipolar_slam.h
+g2o/epipolar/edge_epipolar_se3.h
+g2o/epipolar/vertex_epipolar_se3.cpp
+g2o/epipolar/types_tutorial_epipolar_slam.cpp
+g2o/epipolar/se3.h
+g2o/epipolar/parameter_epipolar_se3_offset.cpp
+g2o/epipolar/parameter_epipolar_se3_offset.h
+g2o/epipolar/tutorial_epipolar_slam.cpp
+g2o/epipolar/vertex_epipolar_se3.h
+g2o/epipolar/edge_epipolar_se3.cpp
 )

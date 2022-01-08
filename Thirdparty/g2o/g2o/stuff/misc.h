@@ -29,6 +29,7 @@
 
 #include "macros.h"
 #include <cmath>
+#include <memory>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -71,6 +72,30 @@ inline T hypot_sqr(T x, T y)
 {
   return x*x + y*y;
 }
+
+template <typename T>
+inline T hypot_sqr(T x, T y, T z)
+{
+  return x*x + y*y + z*z;
+}
+
+/**
+* converts a number constant to a number_t constant at compile time
+* to avoid having to cast everything to avoid warnings.
+**/
+inline constexpr double cst(long double v)
+{
+  return (double)v;
+}
+
+/**
+ * helper function for creating an object in a unique_ptr.
+ */
+template<typename T, typename ...ArgTs>
+std::unique_ptr<T> make_unique(ArgTs&& ...args)
+{
+  return std::unique_ptr<T>(new T(std::forward<ArgTs>(args)...));
+};
 
 /**
  * convert from degree to radian

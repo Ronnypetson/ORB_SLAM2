@@ -32,6 +32,7 @@
 #include <iostream>
 
 #include "../stuff/timeutil.h"
+#include "../stuff/misc.h"
 
 #include "sparse_optimizer.h"
 #include "solver.h"
@@ -52,6 +53,21 @@ namespace g2o {
     _ni=2.;
     _levenbergIterations = 0;
     _nBad = 0;
+  }
+
+  typedef double number_t;
+
+  OptimizationAlgorithmLevenberg::OptimizationAlgorithmLevenberg(std::unique_ptr<Solver> solver)
+      : OptimizationAlgorithmWithHessian(*solver.get()),
+        _currentLambda(cst(-1.)),
+        _tau(cst(1e-5)),
+        _goodStepLowerScale(cst(1. / 3.)),
+        _goodStepUpperScale(cst(2. / 3.)),
+        _ni(cst(2.)),
+        _levenbergIterations(0),
+        m_solver{std::move(solver)} {
+    _userLambdaInit = _properties.makeProperty<Property<number_t> >("initialLambda", 0.);
+    _maxTrialsAfterFailure = _properties.makeProperty<Property<int> >("maxTrialsAfterFailure", 10);
   }
 
   OptimizationAlgorithmLevenberg::~OptimizationAlgorithmLevenberg()

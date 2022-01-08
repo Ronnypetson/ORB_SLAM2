@@ -42,6 +42,7 @@ namespace g2o {
        * linearized system.
        */
       explicit OptimizationAlgorithmLevenberg(Solver* solver);
+      explicit OptimizationAlgorithmLevenberg(std::unique_ptr<Solver> solver);
       virtual ~OptimizationAlgorithmLevenberg();
 
       virtual SolverResult solve(int iteration, bool online = false);
@@ -84,6 +85,9 @@ namespace g2o {
        */
       double computeLambdaInit() const;
       double computeScale() const;
+
+    private:
+      std::unique_ptr<Solver> m_solver;
 
   };
 

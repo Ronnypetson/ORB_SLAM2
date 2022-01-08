@@ -42,6 +42,13 @@ namespace g2o {
     _writeDebug = _properties.makeProperty<Property<bool> >("writeDebug", true);
   }
 
+  OptimizationAlgorithmWithHessian::OptimizationAlgorithmWithHessian(Solver& solver) :
+    OptimizationAlgorithm(),
+    _solver(&solver)
+  {
+    _writeDebug = _properties.makeProperty<Property<bool> >("writeDebug", true);
+  }
+
   OptimizationAlgorithmWithHessian::~OptimizationAlgorithmWithHessian()
   {
     delete _solver;

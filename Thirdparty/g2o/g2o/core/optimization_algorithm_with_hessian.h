@@ -40,6 +40,9 @@ namespace g2o {
   {
     public:
       explicit OptimizationAlgorithmWithHessian(Solver* solver);
+
+      explicit OptimizationAlgorithmWithHessian(Solver& solver);
+
       virtual ~OptimizationAlgorithmWithHessian();
 
       virtual bool init(bool online = false);

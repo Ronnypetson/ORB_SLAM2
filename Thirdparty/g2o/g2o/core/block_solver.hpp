@@ -62,6 +62,20 @@ BlockSolver<Traits>::BlockSolver(LinearSolverType* linearSolver) :
 }
 
 template <typename Traits>
+BlockSolver<Traits>::BlockSolver(std::unique_ptr<LinearSolverType> linearSolver)
+    :   BlockSolverBase(),
+        _linearSolver(static_cast<LinearSolverType*>(std::move(linearSolver).get())) // static_cast<LinearSolverType*>
+{
+  // workspace
+  _xSize=0;
+  _numPoses=0;
+  _numLandmarks=0;
+  _sizePoses=0;
+  _sizeLandmarks=0;
+  _doSchur=true;
+}
+
+template <typename Traits>
 void BlockSolver<Traits>::resize(int* blockPoseIndices, int numPoseBlocks, 
               int* blockLandmarkIndices, int numLandmarkBlocks,
               int s)
