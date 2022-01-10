@@ -110,7 +110,7 @@ int main()
   // TODO simulate different sensor offset
   // simulate a robot observing landmarks while travelling on a grid
   SE3 sensorOffsetTransf(0.0, 0.0, 0.0, -0.0, -0.0, -0.0);
-  int numNodes = 10;
+  int numNodes = 40;
   Simulator simulator;
   simulator.simulate(numNodes, sensorOffsetTransf);
 
@@ -123,12 +123,15 @@ int main()
 
   // allocating the optimizer
   SparseOptimizer optimizer;
-  auto linearSolver = g2o::make_unique<SlamLinearSolver>();
+  // auto linearSolver = g2o::make_unique<SlamLinearSolver>();
+  auto linearSolver = new SlamLinearSolver();
   linearSolver->setBlockOrdering(false);
   // OptimizationAlgorithmGaussNewton* solver = new OptimizationAlgorithmGaussNewton(
   //   g2o::make_unique<SlamBlockSolver>(std::move(linearSolver)));
+  // OptimizationAlgorithmLevenberg* solver = new OptimizationAlgorithmLevenberg(
+  //   g2o::make_unique<SlamBlockSolver>(std::move(linearSolver)));
   OptimizationAlgorithmLevenberg* solver = new OptimizationAlgorithmLevenberg(
-    g2o::make_unique<SlamBlockSolver>(std::move(linearSolver)));
+            new SlamBlockSolver(linearSolver));
 
   optimizer.setAlgorithm(solver);
 
