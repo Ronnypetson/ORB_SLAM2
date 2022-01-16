@@ -37,6 +37,11 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include<opencv2/core/core.hpp>
+
+#include <iostream>
+
+// using namespace std;
 
 namespace g2o {
 
@@ -122,8 +127,39 @@ namespace g2o {
           return _R(i - 3);
         }
 
+        Eigen::Matrix3d orthogonalizeRot(const Eigen::Matrix3d& rot){
+          Eigen::Vector3d x = rot.block<1, 3>(0, 0);
+          Eigen::Vector3d y = rot.block<1, 3>(1, 0);
+          double error = x.dot(y);
+          Eigen::Vector3d x_ort = x - (error / 2) * y;
+          Eigen::Vector3d y_ort = y - (error / 2) * x;
+          Eigen::Vector3d z_ort = x_ort.cross(y_ort);
+          Eigen::Matrix3d result;
+          result.block<1, 3>(0, 0) = 0.5 * (3.0 - x_ort.dot(x_ort)) * x_ort;
+          result.block<1, 3>(1, 0) = 0.5 * (3.0 - y_ort.dot(y_ort)) * y_ort;
+          result.block<1, 3>(2, 0) = 0.5 * (3.0 - z_ort.dot(z_ort)) * z_ort;
+          return result;
+        }
+
         void fromVector (const Vector6& v){
           *this = SE3(v[0], v[1], v[2], v[3], v[4], v[5]);
+        }
+
+        void fromMatrix(const cv::Mat &cvT) {
+          SE3 ret;
+          Eigen::Matrix4d exp_T;
+          exp_T << cvT.at<float>(0,0), cvT.at<float>(0,1), cvT.at<float>(0,2), cvT.at<float>(0,3),
+                   cvT.at<float>(1,0), cvT.at<float>(1,1), cvT.at<float>(1,2), cvT.at<float>(1,3),
+                   cvT.at<float>(2,0), cvT.at<float>(2,1), cvT.at<float>(2,2), cvT.at<float>(2,3),
+                   0.0,                0.0,                0.0,                1.0;
+          Eigen::Matrix3d exp_R = exp_T.block<3, 3>(0, 0);
+          Eigen::Matrix3d orth_exp_R = orthogonalizeRot(exp_R);
+          exp_T.block<3, 3>(0, 0) = orth_exp_R;
+          Sophus::SE3<double> _result(exp_T);
+          Vector6 vec_result = _result.log();
+          ret._t = vec_result.block<3, 1>(0, 0);
+          ret._R = vec_result.block<3, 1>(3, 0);
+          *this = ret;
         }
 
         Vector6 toVector() const {

@@ -29,6 +29,7 @@
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
 
 // Epipolar BA types
+#include "Thirdparty/g2o/g2o/epipolar/se3.h"
 #include "Thirdparty/g2o/g2o/epipolar/vertex_epipolar_se3.h"
 #include "Thirdparty/g2o/g2o/epipolar/edge_epipolar_se3.h"
 #include "Thirdparty/g2o/g2o/epipolar/types_tutorial_epipolar_slam.h"
@@ -45,6 +46,8 @@
 
 #include<mutex>
 
+#include <iterator>
+
 namespace ORB_SLAM2
 {
 
@@ -53,7 +56,8 @@ void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopF
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     vector<MapPoint*> vpMP = pMap->GetAllMapPoints();
-    BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+    // BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+    EpipolarBundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
 }
 
 
@@ -280,8 +284,12 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
             continue;
-        g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
-        vSE3->setEstimate(Converter::toSE3Quat(pKF->GetPose()));
+        // g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
+        g2o::tutorial::VertexEpipolarSE3* vSE3 = new g2o::tutorial::VertexEpipolarSE3;
+        g2o::tutorial::SE3 tmpSE3;
+        tmpSE3.fromMatrix(pKF->GetPose());
+        // vSE3->setEstimate(Converter::toSE3Quat(pKF->GetPose()));
+        vSE3->setEstimate(tmpSE3);
         vSE3->setId(pKF->mnId);
         vSE3->setFixed(pKF->mnId==0);
         optimizer.addVertex(vSE3);
@@ -298,17 +306,21 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         MapPoint* pMP = vpMP[i];
         if(pMP->isBad())
             continue;
-        g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
-        vPoint->setEstimate(Converter::toVector3d(pMP->GetWorldPos()));
-        const int id = pMP->mnId+maxKFid+1;
-        vPoint->setId(id);
-        vPoint->setMarginalized(true);
-        optimizer.addVertex(vPoint);
+        // g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
+        // vPoint->setEstimate(Converter::toVector3d(pMP->GetWorldPos()));
+        // const int id = pMP->mnId+maxKFid+1;
+        // vPoint->setId(id);
+        // vPoint->setMarginalized(true);
+        // optimizer.addVertex(vPoint);
 
         const map<KeyFrame*,size_t> observations = pMP->GetObservations();
 
         int nEdges = 0;
-        //SET EDGES
+        // SET EDGES
+        // Get keyframe pairs and combine their observations into one.
+        // Remind to:
+        // 1. Freeze camera parameters.
+        // 2. Convert observations from image coordinates to projection plane coordinates.
         for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
         {
 
@@ -316,72 +328,87 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             if(pKF->isBad() || pKF->mnId>maxKFid)
                 continue;
 
-            nEdges++;
-
             const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
+            Eigen::Matrix<double,2,1> obs;
+            obs << kpUn.pt.x, kpUn.pt.y;
 
-            if(pKF->mvuRight[mit->second]<0)
-            {
-                Eigen::Matrix<double,2,1> obs;
-                obs << kpUn.pt.x, kpUn.pt.y;
+            for(map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1); mit2 != observations.end(); mit2++){
+                KeyFrame* pKF2 = mit2->first;
+                if(pKF2->isBad() || pKF2->mnId>maxKFid)
+                    continue;
 
-                g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
+                nEdges++;
 
-                e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));
-                e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
-                e->setMeasurement(obs);
-                const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
-                e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
+                const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
 
-                if(bRobust)
+                if(pKF->mvuRight[mit->second]<0)
                 {
-                    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-                    e->setRobustKernel(rk);
-                    rk->setDelta(thHuber2D);
+                    Eigen::Matrix<double,2,1> obs2;
+                    Eigen::Vector4d comb_obs;
+
+                    obs2 << kpUn2.pt.x, kpUn2.pt.y;
+                    comb_obs << obs(0), obs(1), obs2(0), obs2(1);
+
+                    g2o::tutorial::EdgeEpipolarSE3* e = new g2o::tutorial::EdgeEpipolarSE3();
+
+                    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
+                    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF2->mnId)));
+                    e->setMeasurement(comb_obs);
+                    // const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
+                    // e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
+                    Eigen::Matrix<double, 1, 1> information;
+                    information << 1.0;
+                    e->setInformation(information);
+
+                    // if(bRobust)
+                    // {
+                    //     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+                    //     e->setRobustKernel(rk);
+                    //     rk->setDelta(thHuber2D);
+                    // }
+
+                    // e->fx = pKF->fx;
+                    // e->fy = pKF->fy;
+                    // e->cx = pKF->cx;
+                    // e->cy = pKF->cy;
+
+                    optimizer.addEdge(e);
+                } else {
+                    Eigen::Matrix<double,3,1> obs;
+                    const float kp_ur = pKF->mvuRight[mit->second];
+                    obs << kpUn.pt.x, kpUn.pt.y, kp_ur;
+
+                    g2o::EdgeStereoSE3ProjectXYZ* e = new g2o::EdgeStereoSE3ProjectXYZ();
+
+                    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
+                    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF2->mnId)));
+                    e->setMeasurement(obs);
+                    const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
+                    Eigen::Matrix3d Info = Eigen::Matrix3d::Identity()*invSigma2;
+                    e->setInformation(Info);
+
+                    if(bRobust)
+                    {
+                        g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+                        e->setRobustKernel(rk);
+                        rk->setDelta(thHuber3D);
+                    }
+
+                    e->fx = pKF->fx;
+                    e->fy = pKF->fy;
+                    e->cx = pKF->cx;
+                    e->cy = pKF->cy;
+                    e->bf = pKF->mbf;
+
+                    optimizer.addEdge(e);
                 }
 
-                e->fx = pKF->fx;
-                e->fy = pKF->fy;
-                e->cx = pKF->cx;
-                e->cy = pKF->cy;
-
-                optimizer.addEdge(e);
-            }
-            else
-            {
-                Eigen::Matrix<double,3,1> obs;
-                const float kp_ur = pKF->mvuRight[mit->second];
-                obs << kpUn.pt.x, kpUn.pt.y, kp_ur;
-
-                g2o::EdgeStereoSE3ProjectXYZ* e = new g2o::EdgeStereoSE3ProjectXYZ();
-
-                e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));
-                e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
-                e->setMeasurement(obs);
-                const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
-                Eigen::Matrix3d Info = Eigen::Matrix3d::Identity()*invSigma2;
-                e->setInformation(Info);
-
-                if(bRobust)
-                {
-                    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-                    e->setRobustKernel(rk);
-                    rk->setDelta(thHuber3D);
-                }
-
-                e->fx = pKF->fx;
-                e->fy = pKF->fy;
-                e->cx = pKF->cx;
-                e->cy = pKF->cy;
-                e->bf = pKF->mbf;
-
-                optimizer.addEdge(e);
             }
         }
 
         if(nEdges==0)
         {
-            optimizer.removeVertex(vPoint);
+            // optimizer.removeVertex(vPoint);
             vbNotIncludedMP[i]=true;
         }
         else
@@ -396,50 +423,57 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
     // Recover optimized data
 
-    //Keyframes
+    // Keyframes
+    // Fix types
     for(size_t i=0; i<vpKFs.size(); i++)
     {
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
             continue;
-        g2o::VertexSE3Expmap* vSE3 = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(pKF->mnId));
-        g2o::SE3Quat SE3quat = vSE3->estimate();
+        g2o::tutorial::VertexEpipolarSE3* vSE3 = static_cast<g2o::tutorial::VertexEpipolarSE3*>(optimizer.vertex(pKF->mnId));
+        g2o::tutorial::SE3 SE3_log = vSE3->estimate();
+        // Eigen::Matrix4d z_rot;
+        // z_rot << 0.0, -1.0, 0.0, 0.0,
+        //          1.0,  0.0, 0.0, 0.0,
+        //          0.0,  0.0, 1.0, 0.0,
+        //          0.0,  0.0, 0.0, 1.0;
+        Eigen::Matrix4d est_pose = SE3_log.toMatrix();
         if(nLoopKF==0)
         {
-            pKF->SetPose(Converter::toCvMat(SE3quat));
-        }
-        else
-        {
-            pKF->mTcwGBA.create(4,4,CV_32F);
-            Converter::toCvMat(SE3quat).copyTo(pKF->mTcwGBA);
+            // pKF->SetPose(Converter::toCvMat(SE3quat));
+            pKF->SetPose(Converter::toCvMat(est_pose));
+        } else {
+            pKF->mTcwGBA.create(4, 4, CV_32F);
+            Converter::toCvMat(est_pose).copyTo(pKF->mTcwGBA);
             pKF->mnBAGlobalForKF = nLoopKF;
         }
     }
 
-    //Points
-    for(size_t i=0; i<vpMP.size(); i++)
-    {
-        if(vbNotIncludedMP[i])
-            continue;
+    // Points
+    // Triangulate points from relative poses and observations from keyframe pairs.
+    // for(size_t i=0; i<vpMP.size(); i++)
+    // {
+    //     if(vbNotIncludedMP[i])
+    //         continue;
 
-        MapPoint* pMP = vpMP[i];
+    //     MapPoint* pMP = vpMP[i];
 
-        if(pMP->isBad())
-            continue;
-        g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
+    //     if(pMP->isBad())
+    //         continue;
+    //     g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
 
-        if(nLoopKF==0)
-        {
-            pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
-            pMP->UpdateNormalAndDepth();
-        }
-        else
-        {
-            pMP->mPosGBA.create(3,1,CV_32F);
-            Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
-            pMP->mnBAGlobalForKF = nLoopKF;
-        }
-    }
+    //     if(nLoopKF==0)
+    //     {
+    //         pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
+    //         pMP->UpdateNormalAndDepth();
+    //     }
+    //     else
+    //     {
+    //         pMP->mPosGBA.create(3,1,CV_32F);
+    //         Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
+    //         pMP->mnBAGlobalForKF = nLoopKF;
+    //     }
+    // }
 
 }
 
