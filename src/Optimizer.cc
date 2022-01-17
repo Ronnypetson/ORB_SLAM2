@@ -427,6 +427,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
     // Keyframes
     // Fix types
+    std::vector<Eigen::Matrix4d, Eigen::aligned_allocator<Eigen::Matrix4d> > est_poses;
     for(size_t i=0; i<vpKFs.size(); i++)
     {
         KeyFrame* pKF = vpKFs[i];
@@ -439,14 +440,33 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         //          1.0,  0.0, 0.0, 0.0,
         //          0.0,  0.0, 1.0, 0.0,
         //          0.0,  0.0, 0.0, 1.0;
-        Eigen::Matrix4d est_pose = SE3_log.toMatrix();
+        est_poses.push_back(SE3_log.toMatrix());
+    }
+
+    double norm_factor = 1.0;
+    if(est_poses.size() >= 2){
+        Eigen::Matrix4d delta_T;
+        delta_T = est_poses[0].inverse() * est_poses[1];
+        double t_norm = delta_T.block<3, 1>(0, 3).norm();
+        if(t_norm > 1e-6)
+            norm_factor = 1.0 / t_norm;
+    }
+
+    for(size_t i=0; i<vpKFs.size(); i++){
+        KeyFrame* pKF = vpKFs[i];
+        if(pKF->isBad())
+            continue;
+
+        Eigen::Vector3d new_tr;
+        new_tr = est_poses[i].block<3, 1>(0, 3) * norm_factor;
+        est_poses[i].block<3, 1>(0, 3) = new_tr;
+
         if(nLoopKF==0)
         {
-            // pKF->SetPose(Converter::toCvMat(SE3quat));
-            pKF->SetPose(Converter::toCvMat(est_pose));
+            pKF->SetPose(Converter::toCvMat(est_poses[i]));
         } else {
             pKF->mTcwGBA.create(4, 4, CV_32F);
-            Converter::toCvMat(est_pose).copyTo(pKF->mTcwGBA);
+            Converter::toCvMat(est_poses[i]).copyTo(pKF->mTcwGBA);
             pKF->mnBAGlobalForKF = nLoopKF;
         }
     }
