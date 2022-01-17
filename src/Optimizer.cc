@@ -48,6 +48,8 @@
 
 #include <iterator>
 
+#include <opencv2/core/eigen.hpp>
+
 namespace ORB_SLAM2
 {
 
@@ -451,29 +453,64 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
     // Points
     // Triangulate points from relative poses and observations from keyframe pairs.
-    // for(size_t i=0; i<vpMP.size(); i++)
-    // {
-    //     if(vbNotIncludedMP[i])
-    //         continue;
+    for(size_t i=0; i<vpMP.size(); i++)
+    {
+        if(vbNotIncludedMP[i])
+            continue;
 
-    //     MapPoint* pMP = vpMP[i];
+        MapPoint* pMP = vpMP[i];
 
-    //     if(pMP->isBad())
-    //         continue;
-    //     g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
+        if(pMP->isBad())
+            continue;
 
-    //     if(nLoopKF==0)
-    //     {
-    //         pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
-    //         pMP->UpdateNormalAndDepth();
-    //     }
-    //     else
-    //     {
-    //         pMP->mPosGBA.create(3,1,CV_32F);
-    //         Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
-    //         pMP->mnBAGlobalForKF = nLoopKF;
-    //     }
-    // }
+        // g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
+
+        const map<KeyFrame*,size_t> observations = pMP->GetObservations();
+        if (observations.size() <= 1)
+            continue;
+
+        map<KeyFrame*,size_t>::const_iterator mit = observations.begin();
+        map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1);
+
+        KeyFrame* pKF = mit->first;
+        KeyFrame* pKF2 = mit2->first;
+
+        Eigen::Matrix4d T1, T2;
+        cv::cv2eigen(pKF->GetPose(), T1);
+        cv::cv2eigen(pKF2->GetPose(), T2);
+
+        Eigen::Matrix4d T_1wrt2 = T2.inverse() * T1;
+
+        const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
+        const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
+
+        Eigen::Matrix<double, 2, 3> _p2;
+        _p2 << 1.0, 0.0, -kpUn2.pt.x,
+               0.0, 1.0, -kpUn2.pt.y;
+        Eigen::Vector3d p1;
+        p1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+
+        double A, B, depth;
+        A = (_p2 * T_1wrt2.block<3, 1>(0, 3)).norm();
+        B = (_p2 * T_1wrt2.block<3, 3>(0, 0) * p1).norm();
+        depth = A / B;
+        Eigen::Vector3d pt_estimate;
+        pt_estimate = p1 * depth;
+
+        if(nLoopKF==0)
+        {
+            // pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
+            pMP->SetWorldPos(Converter::toCvMat(pt_estimate));
+            pMP->UpdateNormalAndDepth();
+        }
+        else
+        {
+            pMP->mPosGBA.create(3,1,CV_32F);
+            // Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
+            Converter::toCvMat(pt_estimate).copyTo(pMP->mPosGBA);
+            pMP->mnBAGlobalForKF = nLoopKF;
+        }
+    }
 
 }
 
