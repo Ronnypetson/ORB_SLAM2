@@ -100,16 +100,16 @@ namespace g2o {
 
         static double _sign_func(double x)
         {
-            if (std::abs(x) > 1E-9){
+            if (std::abs(x) > 1E-16){
               if (x > 0)
                 return +1.0;
               else
                 return -1.0;
             } else {
               if (x > 0)
-                return 1E-9;
+                return 1E-16;
               else
-                return -1E-9;
+                return -1E-16;
             }
         }
 

@@ -99,7 +99,7 @@ namespace g2o {
         // std::cout << "1\n\n";
       } else {
         for (int i = 0; i < POSE_DIM; i++){
-          _jacobianOplusXj(0, i) = 1E-10;
+          _jacobianOplusXj(0, i) = 1E-16;
         }
       }
 
@@ -125,7 +125,7 @@ namespace g2o {
         // std::cout << "0\n\n";
       } else {
         for (int i = 0; i < POSE_DIM; i++){
-          _jacobianOplusXi(0, i) = 1E-10;
+          _jacobianOplusXi(0, i) = 1E-16;
         }
       }
     }

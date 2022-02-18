@@ -302,7 +302,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     const float thHuber2D = sqrt(5.99);
     const float thHuber3D = sqrt(7.815);
 
-    // Set MapPoint vertices
+    // SET edges related to each map point
     for(size_t i=0; i<vpMP.size(); i++)
     {
         MapPoint* pMP = vpMP[i];
@@ -316,8 +316,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         // optimizer.addVertex(vPoint);
 
         const map<KeyFrame*,size_t> observations = pMP->GetObservations();
-
         int nEdges = 0;
+
         // SET EDGES
         // Get keyframe pairs and combine their observations into one.
         // Remind to:
@@ -330,25 +330,35 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             if(pKF->isBad() || pKF->mnId>maxKFid)
                 continue;
 
+            Eigen::Matrix3d KFintr = Eigen::Matrix3d::Zero();
+            Eigen::Matrix3d invKFintr = Eigen::Matrix3d::Zero();
+            KFintr << pKF->fx, 0.0, pKF->cx,
+                    0.0, pKF->fy, pKF->cy,
+                    0.0,     0.0, 1.0;
+            invKFintr = KFintr.inverse();
+
             const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
-            Eigen::Matrix<double,2,1> obs;
-            obs << kpUn.pt.x, kpUn.pt.y;
+            // Eigen::Matrix<double,2,1> obs;
+            Eigen::Matrix<double,3,1> obs, cobs;
+            cobs << kpUn.pt.x, kpUn.pt.y, 1.0;
+            // obs << kpUn.pt.x, kpUn.pt.y;
+            obs = invKFintr * cobs;
 
             for(map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1); mit2 != observations.end(); mit2++){
                 KeyFrame* pKF2 = mit2->first;
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
                     continue;
 
-                nEdges++;
-
                 const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
 
                 if(pKF->mvuRight[mit->second]<0)
                 {
-                    Eigen::Matrix<double,2,1> obs2;
+                    Eigen::Matrix<double,3,1> cobs2, obs2;
                     Eigen::Vector4d comb_obs;
 
-                    obs2 << kpUn2.pt.x, kpUn2.pt.y;
+                    cobs2 << kpUn2.pt.x, kpUn2.pt.y, 1.0;
+                    // obs2 << kpUn2.pt.x, kpUn2.pt.y;
+                    obs2 = invKFintr * cobs2;
                     comb_obs << obs(0), obs(1), obs2(0), obs2(1);
 
                     g2o::tutorial::EdgeEpipolarSE3* e = new g2o::tutorial::EdgeEpipolarSE3();
@@ -404,7 +414,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
                     optimizer.addEdge(e);
                 }
-
+                nEdges++;
             }
         }
 
@@ -435,22 +445,17 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             continue;
         g2o::tutorial::VertexEpipolarSE3* vSE3 = static_cast<g2o::tutorial::VertexEpipolarSE3*>(optimizer.vertex(pKF->mnId));
         g2o::tutorial::SE3 SE3_log = vSE3->estimate();
-        // Eigen::Matrix4d z_rot;
-        // z_rot << 0.0, -1.0, 0.0, 0.0,
-        //          1.0,  0.0, 0.0, 0.0,
-        //          0.0,  0.0, 1.0, 0.0,
-        //          0.0,  0.0, 0.0, 1.0;
         est_poses.push_back(SE3_log.toMatrix());
     }
 
     double norm_factor = 1.0;
-    if(est_poses.size() >= 2){
-        Eigen::Matrix4d delta_T;
-        delta_T = est_poses[0].inverse() * est_poses[1];
-        double t_norm = delta_T.block<3, 1>(0, 3).norm();
-        if(t_norm > 1e-6)
-            norm_factor = 1.0 / t_norm;
-    }
+    // if(est_poses.size() >= 2){
+    //     Eigen::Matrix4d delta_T;
+    //     delta_T = est_poses[0].inverse() * est_poses[1];
+    //     double t_norm = delta_T.block<3, 1>(0, 3).norm();
+    //     if(t_norm > 1e-6)
+    //         norm_factor = 1.0 / t_norm;
+    // }
 
     for(size_t i=0; i<vpKFs.size(); i++){
         KeyFrame* pKF = vpKFs[i];
@@ -495,6 +500,13 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         KeyFrame* pKF = mit->first;
         KeyFrame* pKF2 = mit2->first;
 
+        Eigen::Matrix3d KFintr = Eigen::Matrix3d::Zero();
+        Eigen::Matrix3d invKFintr = Eigen::Matrix3d::Zero();
+        KFintr << pKF->fx, 0.0, pKF->cx,
+                  0.0, pKF->fy, pKF->cy,
+                  0.0,     0.0, 1.0;
+        invKFintr = KFintr.inverse();
+
         Eigen::Matrix4d T1, T2;
         cv::cv2eigen(pKF->GetPose(), T1);
         cv::cv2eigen(pKF2->GetPose(), T2);
@@ -504,11 +516,18 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
         const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
 
+        Eigen::Vector3d cp2, pp2;
+        cp2 << kpUn2.pt.x, kpUn2.pt.y, 1.0;
+        pp2 = invKFintr * cp2;
         Eigen::Matrix<double, 2, 3> _p2;
-        _p2 << 1.0, 0.0, -kpUn2.pt.x,
-               0.0, 1.0, -kpUn2.pt.y;
-        Eigen::Vector3d p1;
-        p1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+        // _p2 << 1.0, 0.0, -kpUn2.pt.x,
+        //        0.0, 1.0, -kpUn2.pt.y;
+        _p2 << 1.0, 0.0, -pp2(0),
+               0.0, 1.0, -pp2(1);
+        Eigen::Vector3d p1, cp1;
+        // p1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+        cp1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+        p1 = invKFintr * cp1;
 
         double A, B, depth;
         A = (_p2 * T_1wrt2.block<3, 1>(0, 3)).norm();
@@ -675,6 +694,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
 
         vSE3->setEstimate(Converter::toSE3Quat(pFrame->mTcw));
         optimizer.initializeOptimization(0);
+        // optimizer.initializeOptimization(-1);
         optimizer.optimize(its[it]);
 
         nBad=0;
@@ -1077,6 +1097,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
 }
 
 
+// Probably 7-DoF pose-graph optimization
 void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
