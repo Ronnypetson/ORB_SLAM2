@@ -54,6 +54,8 @@
 
 #include <iostream>
 
+#include <random>
+
 namespace ORB_SLAM2
 {
 
@@ -308,11 +310,17 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
     // SET edges related to each map point
     int allEdges = 0;
+    std::default_random_engine randGen;
+    std::uniform_real_distribution<double> randDist(0.0, 1.0);
     for(size_t i=0; i<vpMP.size(); i++)
     {
         MapPoint* pMP = vpMP[i];
         if(pMP->isBad())
             continue;
+
+        if(randDist(randGen) > 0.1)
+            continue;
+
         // g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
         // vPoint->setEstimate(Converter::toVector3d(pMP->GetWorldPos()));
         // const int id = pMP->mnId+maxKFid+1;
@@ -320,7 +328,14 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         // vPoint->setMarginalized(true);
         // optimizer.addVertex(vPoint);
 
-        const map<KeyFrame*,size_t> observations = pMP->GetObservations();
+        const map<KeyFrame*,size_t> mObservations = pMP->GetObservations();
+        vector<pair<KeyFrame*,size_t> > observations(mObservations.begin(), mObservations.end());
+        std::sort(
+            observations.begin(),
+            observations.end(),
+            [](pair<KeyFrame*,size_t>& left, pair<KeyFrame*,size_t>& right){
+                return left.first->mnFrameId < right.first->mnFrameId;
+            });
         int nEdges = 0;
 
         // SET EDGES
@@ -328,11 +343,14 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         // Remind to:
         // 1. Freeze camera parameters.
         // 2. Convert observations from image coordinates to projection plane coordinates.
-        for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
+        // for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
+        for(int src = 0; src < observations.size(); src++)
         {
             // if(nEdges >= 3)
             //     break;
-            KeyFrame* pKF = mit->first;
+            pair<KeyFrame*,size_t> mit = observations[src];
+            // KeyFrame* pKF = mit->first;
+            KeyFrame* pKF = mit.first;
             if(pKF->isBad() || pKF->mnId>maxKFid)
                 continue;
 
@@ -343,7 +361,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     0.0,     0.0, 1.0;
             invKFintr = KFintr.inverse();
 
-            const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
+            // const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
+            const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit.second];
             // Eigen::Matrix<double,2,1> obs;
             Eigen::Matrix<double,3,1> obs, cobs;
             cobs << kpUn.pt.x, kpUn.pt.y, 1.0;
@@ -352,19 +371,25 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
             int numVertEdges = 0;
             // std::next(mit, 1)
-            for(map<KeyFrame*,size_t>::const_iterator mit2 = observations.begin(); mit2 != observations.end(); mit2++){
+            // for(map<KeyFrame*,size_t>::const_iterator mit2 = observations.begin(); mit2 != observations.end(); mit2++)
+            for(int tgt = src + 1; tgt < std::min((int)observations.size(), src + 3); tgt++)
+            {
                 // if(numVertEdges >= 2)
                 //     break;
-                KeyFrame* pKF2 = mit2->first;
+                pair<KeyFrame*,size_t> mit2 = observations[tgt];
+                // KeyFrame* pKF2 = mit2->first;
+                KeyFrame* pKF2 = mit2.first;
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
                     continue;
 
                 if(pKF->mnFrameId >= pKF2->mnFrameId || pKF->mnFrameId + 4 < pKF2->mnFrameId)
                     continue;
 
-                const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
+                // const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
+                const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2.second];
 
-                if(pKF->mvuRight[mit->second]<0)
+                // if(pKF->mvuRight[mit->second]<0)
+                if(pKF->mvuRight[mit.second]<0)
                 {
                     Eigen::Matrix<double,3,1> cobs2, obs2;
                     Eigen::Vector4d comb_obs;
@@ -400,7 +425,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     optimizer.addEdge(e);
                 } else {
                     Eigen::Matrix<double,3,1> obs;
-                    const float kp_ur = pKF->mvuRight[mit->second];
+                    // const float kp_ur = pKF->mvuRight[mit->second];
+                    const float kp_ur = pKF->mvuRight[mit.second];
                     obs << kpUn.pt.x, kpUn.pt.y, kp_ur;
 
                     g2o::EdgeStereoSE3ProjectXYZ* e = new g2o::EdgeStereoSE3ProjectXYZ();
