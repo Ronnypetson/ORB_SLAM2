@@ -370,9 +370,10 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             obs = invKFintr * cobs;
 
             int numVertEdges = 0;
+            int halfWindow = 3;
             // std::next(mit, 1)
             // for(map<KeyFrame*,size_t>::const_iterator mit2 = observations.begin(); mit2 != observations.end(); mit2++)
-            for(int tgt = src + 1; tgt < std::min((int)observations.size(), src + 3); tgt++)
+            for(int tgt = std::max(0, src - halfWindow); tgt < std::min((int)observations.size(), src + halfWindow + 1); tgt++)
             {
                 // if(numVertEdges >= 2)
                 //     break;
@@ -382,7 +383,13 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
                     continue;
 
-                if(pKF->mnFrameId >= pKF2->mnFrameId || pKF->mnFrameId + 4 < pKF2->mnFrameId)
+                if(pKF->mnFrameId == pKF2->mnFrameId)
+                    continue;
+
+                if(pKF->mnFrameId > pKF2->mnFrameId + halfWindow)
+                    continue;
+
+                if(pKF2->mnFrameId > pKF->mnFrameId + halfWindow)
                     continue;
 
                 // const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
