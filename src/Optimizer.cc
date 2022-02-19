@@ -50,6 +50,10 @@
 
 #include <opencv2/core/eigen.hpp>
 
+#include <algorithm>
+
+#include <iostream>
+
 namespace ORB_SLAM2
 {
 
@@ -303,6 +307,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     const float thHuber3D = sqrt(7.815);
 
     // SET edges related to each map point
+    int allEdges = 0;
     for(size_t i=0; i<vpMP.size(); i++)
     {
         MapPoint* pMP = vpMP[i];
@@ -325,7 +330,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         // 2. Convert observations from image coordinates to projection plane coordinates.
         for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
         {
-
+            // if(nEdges >= 3)
+            //     break;
             KeyFrame* pKF = mit->first;
             if(pKF->isBad() || pKF->mnId>maxKFid)
                 continue;
@@ -344,9 +350,16 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             // obs << kpUn.pt.x, kpUn.pt.y;
             obs = invKFintr * cobs;
 
-            for(map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1); mit2 != observations.end(); mit2++){
+            int numVertEdges = 0;
+            // std::next(mit, 1)
+            for(map<KeyFrame*,size_t>::const_iterator mit2 = observations.begin(); mit2 != observations.end(); mit2++){
+                // if(numVertEdges >= 2)
+                //     break;
                 KeyFrame* pKF2 = mit2->first;
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
+                    continue;
+
+                if(pKF->mnFrameId >= pKF2->mnFrameId || pKF->mnFrameId + 4 < pKF2->mnFrameId)
                     continue;
 
                 const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
@@ -415,6 +428,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     optimizer.addEdge(e);
                 }
                 nEdges++;
+                allEdges++;
+                numVertEdges++;
             }
         }
 
@@ -432,6 +447,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     // Optimize!
     optimizer.initializeOptimization();
     optimizer.optimize(nIterations);
+
+    std::cout << allEdges << " edges\n";
 
     // Recover optimized data
 
@@ -478,7 +495,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
     // Points
     // Triangulate points from relative poses and observations from keyframe pairs.
-    for(size_t i=0; i<vpMP.size(); i++)
+    int max_idx = std::min(0, (int)vpMP.size());
+    for(size_t i=0; i<max_idx; i++) // vpMP.size()
     {
         if(vbNotIncludedMP[i])
             continue;
@@ -533,8 +551,12 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         A = (_p2 * T_1wrt2.block<3, 1>(0, 3)).norm();
         B = (_p2 * T_1wrt2.block<3, 3>(0, 0) * p1).norm();
         depth = A / B;
+        Eigen::Vector4d hom_pt_estimate;
+        hom_pt_estimate.block<3, 1>(0, 0) = p1 * depth;
+        hom_pt_estimate(3) = 1.0;
         Eigen::Vector3d pt_estimate;
-        pt_estimate = p1 * depth;
+        // pt_estimate = p1 * depth;
+        pt_estimate = (T1 * hom_pt_estimate).block<3, 1>(0, 0);
 
         if(nLoopKF==0)
         {
