@@ -51,21 +51,77 @@
 #include <opencv2/core/eigen.hpp>
 
 #include <algorithm>
-
 #include <iostream>
-
 #include <random>
+#include <chrono>
+#include <fstream>
+#include <string>
+
 
 namespace ORB_SLAM2
 {
 
 
+int allEdges;
+int allVertices;
+bool isEpipolar;
+int halfWindow;
+double probPtSelection;
+
 void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     vector<MapPoint*> vpMP = pMap->GetAllMapPoints();
-    // BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
-    EpipolarBundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+
+    std::string line;
+    std::ifstream expConfig("exp_config.txt");
+    if(expConfig.is_open()){
+        // isEpipolar
+        getline(expConfig, line);
+        isEpipolar = (line.compare("Epipolar") == 0);
+        // halfWindow
+        getline(expConfig, line);
+        halfWindow = std::stoi(line);
+        // probPtSelection
+        getline(expConfig, line);
+        probPtSelection = std::stod(line);
+        // Close file
+        expConfig.close();
+    } else {
+        isEpipolar = true;
+        halfWindow = -1;
+        probPtSelection = -1.0;
+    }
+
+    allEdges = 0;
+    allVertices = 0;
+    std::cout << "csv_output," << isEpipolar << ",";
+
+#ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+    std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
+
+    if(isEpipolar)
+        EpipolarBundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+    else
+        BundleAdjustment(vpKFs,vpMP,nIterations,pbStopFlag, nLoopKF, bRobust);
+
+#ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+    std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+
+    std::cout << allVertices << ","
+              << allEdges << ","
+              << halfWindow << ","
+              << probPtSelection << ",";
+
+    double tgba = std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+    std::cout << tgba << "\n";
+
 }
 
 
@@ -133,6 +189,7 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
                 continue;
 
             nEdges++;
+            allEdges++;
 
             const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
 
@@ -205,6 +262,8 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
             vbNotIncludedMP[i]=false;
         }
     }
+
+    allVertices = vpKFs.size() + vpMP.size();
 
     // Optimize!
     optimizer.initializeOptimization();
@@ -292,11 +351,9 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         KeyFrame* pKF = vpKFs[i];
         if(pKF->isBad())
             continue;
-        // g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
         g2o::tutorial::VertexEpipolarSE3* vSE3 = new g2o::tutorial::VertexEpipolarSE3;
         g2o::tutorial::SE3 tmpSE3;
         tmpSE3.fromMatrix(pKF->GetPose());
-        // vSE3->setEstimate(Converter::toSE3Quat(pKF->GetPose()));
         vSE3->setEstimate(tmpSE3);
         vSE3->setId(pKF->mnId);
         vSE3->setFixed(pKF->mnId==0);
@@ -309,7 +366,14 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     const float thHuber3D = sqrt(7.815);
 
     // SET edges related to each map point
-    int allEdges = 0;
+    // int allEdges = 0;
+    // int allVertices = vpKFs.size();
+    // int halfWindow = 1;
+    // double probPtSelection = 0.1;
+    allEdges = 0;
+    allVertices = vpKFs.size();
+    // halfWindow = 1;
+    // probPtSelection = 0.1;
     std::default_random_engine randGen;
     std::uniform_real_distribution<double> randDist(0.0, 1.0);
     for(size_t i=0; i<vpMP.size(); i++)
@@ -318,7 +382,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         if(pMP->isBad())
             continue;
 
-        if(randDist(randGen) > 0.1)
+        if(randDist(randGen) > probPtSelection)
             continue;
 
         // g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
@@ -343,13 +407,9 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         // Remind to:
         // 1. Freeze camera parameters.
         // 2. Convert observations from image coordinates to projection plane coordinates.
-        // for(map<KeyFrame*,size_t>::const_iterator mit=observations.begin(); mit!=observations.end(); mit++)
         for(int src = 0; src < observations.size(); src++)
         {
-            // if(nEdges >= 3)
-            //     break;
             pair<KeyFrame*,size_t> mit = observations[src];
-            // KeyFrame* pKF = mit->first;
             KeyFrame* pKF = mit.first;
             if(pKF->isBad() || pKF->mnId>maxKFid)
                 continue;
@@ -361,24 +421,15 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     0.0,     0.0, 1.0;
             invKFintr = KFintr.inverse();
 
-            // const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
             const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit.second];
-            // Eigen::Matrix<double,2,1> obs;
             Eigen::Matrix<double,3,1> obs, cobs;
             cobs << kpUn.pt.x, kpUn.pt.y, 1.0;
-            // obs << kpUn.pt.x, kpUn.pt.y;
             obs = invKFintr * cobs;
 
             int numVertEdges = 0;
-            int halfWindow = 3;
-            // std::next(mit, 1)
-            // for(map<KeyFrame*,size_t>::const_iterator mit2 = observations.begin(); mit2 != observations.end(); mit2++)
             for(int tgt = std::max(0, src - halfWindow); tgt < std::min((int)observations.size(), src + halfWindow + 1); tgt++)
             {
-                // if(numVertEdges >= 2)
-                //     break;
                 pair<KeyFrame*,size_t> mit2 = observations[tgt];
-                // KeyFrame* pKF2 = mit2->first;
                 KeyFrame* pKF2 = mit2.first;
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
                     continue;
@@ -392,17 +443,14 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                 if(pKF2->mnFrameId > pKF->mnFrameId + halfWindow)
                     continue;
 
-                // const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
                 const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2.second];
 
-                // if(pKF->mvuRight[mit->second]<0)
                 if(pKF->mvuRight[mit.second]<0)
                 {
                     Eigen::Matrix<double,3,1> cobs2, obs2;
                     Eigen::Vector4d comb_obs;
 
                     cobs2 << kpUn2.pt.x, kpUn2.pt.y, 1.0;
-                    // obs2 << kpUn2.pt.x, kpUn2.pt.y;
                     obs2 = invKFintr * cobs2;
                     comb_obs << obs(0), obs(1), obs2(0), obs2(1);
 
@@ -411,8 +459,6 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
                     e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF2->mnId)));
                     e->setMeasurement(comb_obs);
-                    // const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
-                    // e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
                     Eigen::Matrix<double, 1, 1> information;
                     information << 1.0;
                     e->setInformation(information);
@@ -481,7 +527,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     optimizer.initializeOptimization();
     optimizer.optimize(nIterations);
 
-    std::cout << allEdges << " edges\n";
+    // std::cout << allEdges << " edges\n";
 
     // Recover optimized data
 
@@ -499,13 +545,6 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     }
 
     double norm_factor = 1.0;
-    // if(est_poses.size() >= 2){
-    //     Eigen::Matrix4d delta_T;
-    //     delta_T = est_poses[0].inverse() * est_poses[1];
-    //     double t_norm = delta_T.block<3, 1>(0, 3).norm();
-    //     if(t_norm > 1e-6)
-    //         norm_factor = 1.0 / t_norm;
-    // }
 
     for(size_t i=0; i<vpKFs.size(); i++){
         KeyFrame* pKF = vpKFs[i];
@@ -526,85 +565,85 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         }
     }
 
-    // Points
-    // Triangulate points from relative poses and observations from keyframe pairs.
-    int max_idx = std::min(0, (int)vpMP.size());
-    for(size_t i=0; i<max_idx; i++) // vpMP.size()
-    {
-        if(vbNotIncludedMP[i])
-            continue;
+    // // Points
+    // // Triangulate points from relative poses and observations from keyframe pairs.
+    // int max_idx = std::min(0, (int)vpMP.size());
+    // for(size_t i=0; i<max_idx; i++) // vpMP.size()
+    // {
+    //     if(vbNotIncludedMP[i])
+    //         continue;
 
-        MapPoint* pMP = vpMP[i];
+    //     MapPoint* pMP = vpMP[i];
 
-        if(pMP->isBad())
-            continue;
+    //     if(pMP->isBad())
+    //         continue;
 
-        // g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
+    //     // g2o::VertexSBAPointXYZ* vPoint = static_cast<g2o::VertexSBAPointXYZ*>(optimizer.vertex(pMP->mnId+maxKFid+1));
 
-        const map<KeyFrame*,size_t> observations = pMP->GetObservations();
-        if (observations.size() <= 1)
-            continue;
+    //     const map<KeyFrame*,size_t> observations = pMP->GetObservations();
+    //     if (observations.size() <= 1)
+    //         continue;
 
-        map<KeyFrame*,size_t>::const_iterator mit = observations.begin();
-        map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1);
+    //     map<KeyFrame*,size_t>::const_iterator mit = observations.begin();
+    //     map<KeyFrame*,size_t>::const_iterator mit2 = std::next(mit, 1);
 
-        KeyFrame* pKF = mit->first;
-        KeyFrame* pKF2 = mit2->first;
+    //     KeyFrame* pKF = mit->first;
+    //     KeyFrame* pKF2 = mit2->first;
 
-        Eigen::Matrix3d KFintr = Eigen::Matrix3d::Zero();
-        Eigen::Matrix3d invKFintr = Eigen::Matrix3d::Zero();
-        KFintr << pKF->fx, 0.0, pKF->cx,
-                  0.0, pKF->fy, pKF->cy,
-                  0.0,     0.0, 1.0;
-        invKFintr = KFintr.inverse();
+    //     Eigen::Matrix3d KFintr = Eigen::Matrix3d::Zero();
+    //     Eigen::Matrix3d invKFintr = Eigen::Matrix3d::Zero();
+    //     KFintr << pKF->fx, 0.0, pKF->cx,
+    //               0.0, pKF->fy, pKF->cy,
+    //               0.0,     0.0, 1.0;
+    //     invKFintr = KFintr.inverse();
 
-        Eigen::Matrix4d T1, T2;
-        cv::cv2eigen(pKF->GetPose(), T1);
-        cv::cv2eigen(pKF2->GetPose(), T2);
+    //     Eigen::Matrix4d T1, T2;
+    //     cv::cv2eigen(pKF->GetPose(), T1);
+    //     cv::cv2eigen(pKF2->GetPose(), T2);
 
-        Eigen::Matrix4d T_1wrt2 = T2.inverse() * T1;
+    //     Eigen::Matrix4d T_1wrt2 = T2.inverse() * T1;
 
-        const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
-        const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
+    //     const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
+    //     const cv::KeyPoint &kpUn2 = pKF2->mvKeysUn[mit2->second];
 
-        Eigen::Vector3d cp2, pp2;
-        cp2 << kpUn2.pt.x, kpUn2.pt.y, 1.0;
-        pp2 = invKFintr * cp2;
-        Eigen::Matrix<double, 2, 3> _p2;
-        // _p2 << 1.0, 0.0, -kpUn2.pt.x,
-        //        0.0, 1.0, -kpUn2.pt.y;
-        _p2 << 1.0, 0.0, -pp2(0),
-               0.0, 1.0, -pp2(1);
-        Eigen::Vector3d p1, cp1;
-        // p1 << kpUn.pt.x, kpUn.pt.y, 1.0;
-        cp1 << kpUn.pt.x, kpUn.pt.y, 1.0;
-        p1 = invKFintr * cp1;
+    //     Eigen::Vector3d cp2, pp2;
+    //     cp2 << kpUn2.pt.x, kpUn2.pt.y, 1.0;
+    //     pp2 = invKFintr * cp2;
+    //     Eigen::Matrix<double, 2, 3> _p2;
+    //     // _p2 << 1.0, 0.0, -kpUn2.pt.x,
+    //     //        0.0, 1.0, -kpUn2.pt.y;
+    //     _p2 << 1.0, 0.0, -pp2(0),
+    //            0.0, 1.0, -pp2(1);
+    //     Eigen::Vector3d p1, cp1;
+    //     // p1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+    //     cp1 << kpUn.pt.x, kpUn.pt.y, 1.0;
+    //     p1 = invKFintr * cp1;
 
-        double A, B, depth;
-        A = (_p2 * T_1wrt2.block<3, 1>(0, 3)).norm();
-        B = (_p2 * T_1wrt2.block<3, 3>(0, 0) * p1).norm();
-        depth = A / B;
-        Eigen::Vector4d hom_pt_estimate;
-        hom_pt_estimate.block<3, 1>(0, 0) = p1 * depth;
-        hom_pt_estimate(3) = 1.0;
-        Eigen::Vector3d pt_estimate;
-        // pt_estimate = p1 * depth;
-        pt_estimate = (T1 * hom_pt_estimate).block<3, 1>(0, 0);
+    //     double A, B, depth;
+    //     A = (_p2 * T_1wrt2.block<3, 1>(0, 3)).norm();
+    //     B = (_p2 * T_1wrt2.block<3, 3>(0, 0) * p1).norm();
+    //     depth = A / B;
+    //     Eigen::Vector4d hom_pt_estimate;
+    //     hom_pt_estimate.block<3, 1>(0, 0) = p1 * depth;
+    //     hom_pt_estimate(3) = 1.0;
+    //     Eigen::Vector3d pt_estimate;
+    //     // pt_estimate = p1 * depth;
+    //     pt_estimate = (T1 * hom_pt_estimate).block<3, 1>(0, 0);
 
-        if(nLoopKF==0)
-        {
-            // pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
-            pMP->SetWorldPos(Converter::toCvMat(pt_estimate));
-            pMP->UpdateNormalAndDepth();
-        }
-        else
-        {
-            pMP->mPosGBA.create(3,1,CV_32F);
-            // Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
-            Converter::toCvMat(pt_estimate).copyTo(pMP->mPosGBA);
-            pMP->mnBAGlobalForKF = nLoopKF;
-        }
-    }
+    //     if(nLoopKF==0)
+    //     {
+    //         // pMP->SetWorldPos(Converter::toCvMat(vPoint->estimate()));
+    //         pMP->SetWorldPos(Converter::toCvMat(pt_estimate));
+    //         pMP->UpdateNormalAndDepth();
+    //     }
+    //     else
+    //     {
+    //         pMP->mPosGBA.create(3,1,CV_32F);
+    //         // Converter::toCvMat(vPoint->estimate()).copyTo(pMP->mPosGBA);
+    //         Converter::toCvMat(pt_estimate).copyTo(pMP->mPosGBA);
+    //         pMP->mnBAGlobalForKF = nLoopKF;
+    //     }
+    // }
 
 }
 
