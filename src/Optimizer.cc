@@ -386,8 +386,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
         if(pMP->isBad())
             continue;
 
-        if(randDist(randGen) > probPtSelection)
-            continue;
+        // if(randDist(randGen) > probPtSelection)
+        //     continue;
 
         // g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
         // vPoint->setEstimate(Converter::toVector3d(pMP->GetWorldPos()));
@@ -433,6 +433,10 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             int numVertEdges = 0;
             for(int tgt = std::max(0, src - halfWindow); tgt < std::min((int)observations.size(), src + halfWindow + 1); tgt++)
             {
+                // Random edge filter
+                if(randDist(randGen) > probPtSelection)
+                    continue;
+
                 pair<KeyFrame*,size_t> mit2 = observations[tgt];
                 KeyFrame* pKF2 = mit2.first;
                 if(pKF2->isBad() || pKF2->mnId>maxKFid)
@@ -480,7 +484,12 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     // e->cx = pKF->cx;
                     // e->cy = pKF->cy;
 
-                    optimizer.addEdge(e);
+                    g2o::tutorial::EdgeEpipolarSE3 eAux(*e); // = new g2o::tutorial::EdgeEpipolarSE3();
+                    eAux.computeError();
+                    if (eAux.chi2() < 1E-7){
+                        optimizer.addEdge(e);
+                        allEdges++;
+                    }
                 } else {
                     Eigen::Matrix<double,3,1> obs;
                     // const float kp_ur = pKF->mvuRight[mit->second];
@@ -512,7 +521,6 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     optimizer.addEdge(e);
                 }
                 nEdges++;
-                allEdges++;
                 numVertEdges++;
             }
         }
