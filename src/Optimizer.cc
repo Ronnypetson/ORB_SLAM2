@@ -379,6 +379,10 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     for(size_t i=0; i<vpMP.size(); i++)
     {
         MapPoint* pMP = vpMP[i];
+
+        if(!pMP->mbTrackInView)
+            continue;
+
         if(pMP->isBad())
             continue;
 
@@ -461,6 +465,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     e->setMeasurement(comb_obs);
                     Eigen::Matrix<double, 1, 1> information;
                     information << 1.0;
+                    // information << 1.0 / (1.0 + std::abs(src - tgt));
                     e->setInformation(information);
 
                     // if(bRobust)
@@ -783,12 +788,12 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     const int its[4]={10,10,10,10};    
 
     int nBad=0;
+    int mpIdx = 0;
     for(size_t it=0; it<4; it++)
     {
 
         vSE3->setEstimate(Converter::toSE3Quat(pFrame->mTcw));
         optimizer.initializeOptimization(0);
-        // optimizer.initializeOptimization(-1);
         optimizer.optimize(its[it]);
 
         nBad=0;
