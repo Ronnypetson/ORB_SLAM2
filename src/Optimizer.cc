@@ -486,7 +486,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
                     g2o::tutorial::EdgeEpipolarSE3 eAux(*e); // = new g2o::tutorial::EdgeEpipolarSE3();
                     eAux.computeError();
-                    if (eAux.chi2() < 1E-7){
+                    if (eAux.chi2() < 1E-5){
                         optimizer.addEdge(e);
                         allEdges++;
                     }

@@ -61,6 +61,13 @@ int main(int argc, char **argv)
     cout << "Images in the sequence: " << nImages << endl << endl;
 
     // Main loop
+    std::ofstream timeStampsOut;
+    timeStampsOut.open("timestamps_KITTI.txt");
+#ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+#else
+    std::chrono::monotonic_clock::time_point t0 = std::chrono::monotonic_clock::now();
+#endif
     cv::Mat im;
     for(int ni=0; ni<nImages; ni++)
     {
@@ -79,6 +86,9 @@ int main(int argc, char **argv)
 #else
         std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
 #endif
+
+        double tNow = std::chrono::duration_cast<std::chrono::duration<double> > (t1 - t0).count();
+        timeStampsOut << tNow << "\n";
 
         // Pass the image to the SLAM system
         SLAM.TrackMonocular(im,tframe);
@@ -103,6 +113,7 @@ int main(int argc, char **argv)
         if(ttrack<T)
             usleep((T-ttrack)*1e6);
     }
+    timeStampsOut.close();
 
     // Stop all threads
     SLAM.Shutdown();
