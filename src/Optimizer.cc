@@ -431,7 +431,13 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             obs = invKFintr * cobs;
 
             int numVertEdges = 0;
-            for(int tgt = std::max(0, src - halfWindow); tgt < std::min((int)observations.size(), src + halfWindow + 1); tgt++)
+            int tgt_min = std::max(0, src - halfWindow);
+            int tgt_max = std::min((int)observations.size(), src + halfWindow + 1);
+            if(src > observations.size() - 5 || true){
+                tgt_min = 0;
+                tgt_max = observations.size() - 1;
+            }
+            for(int tgt = tgt_min; tgt < tgt_max; tgt++)
             {
                 // Random edge filter
                 if(randDist(randGen) > probPtSelection)
@@ -484,9 +490,9 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
                     // e->cx = pKF->cx;
                     // e->cy = pKF->cy;
 
-                    g2o::tutorial::EdgeEpipolarSE3 eAux(*e); // = new g2o::tutorial::EdgeEpipolarSE3();
+                    g2o::tutorial::EdgeEpipolarSE3 eAux(*e);
                     eAux.computeError();
-                    if (eAux.chi2() < 1E-5){
+                    if (eAux.chi2() < 1E-6){
                         optimizer.addEdge(e);
                         allEdges++;
                     }
