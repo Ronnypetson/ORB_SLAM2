@@ -505,7 +505,7 @@ void LoopClosing::CorrectLoop()
             Eigen::Vector3d eigt = g2oCorrectedSiw.translation();
             double s = g2oCorrectedSiw.scale();
 
-            eigt *=(1./s); //[R t/s;0 1]
+            eigt *= (1./s); //[R t/s;0 1]
 
             cv::Mat correctedTiw = Converter::toCvSE3(eigR,eigt);
 

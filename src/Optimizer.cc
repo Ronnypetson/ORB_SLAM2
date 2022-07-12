@@ -380,8 +380,8 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
     {
         MapPoint* pMP = vpMP[i];
 
-        if(!pMP->mbTrackInView)
-            continue;
+        // if(!pMP->mbTrackInView)
+        //     continue;
 
         if(pMP->isBad())
             continue;
@@ -431,13 +431,13 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
             obs = invKFintr * cobs;
 
             int numVertEdges = 0;
-            int tgt_min = std::max(0, src - halfWindow);
-            int tgt_max = std::min((int)observations.size(), src + halfWindow + 1);
-            if(src > observations.size() - 5 || true){
-                tgt_min = 0;
-                tgt_max = observations.size() - 1;
-            }
-            for(int tgt = tgt_min; tgt < tgt_max; tgt++)
+            // int tgt_min = std::max(0, src - halfWindow);
+            // int tgt_max = std::min((int)observations.size(), src + halfWindow + 1);
+            // if(src > observations.size() - 5 || true){
+            //     tgt_min = 0;
+            //     tgt_max = observations.size() - 1;
+            // }
+            for(int tgt = 0; tgt < observations.size(); tgt++)
             {
                 // Random edge filter
                 if(randDist(randGen) > probPtSelection)
@@ -492,7 +492,7 @@ void Optimizer::EpipolarBundleAdjustment(const vector<KeyFrame *> &vpKFs, const 
 
                     g2o::tutorial::EdgeEpipolarSE3 eAux(*e);
                     eAux.computeError();
-                    if (eAux.chi2() < 1E-6){
+                    if (eAux.chi2() < 1E-8){
                         optimizer.addEdge(e);
                         allEdges++;
                     }
