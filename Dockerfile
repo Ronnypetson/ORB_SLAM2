@@ -47,3 +47,26 @@ RUN cmake -DOPENCV_EXTRA_MODULES_PATH=/code/opencv_contrib-4.x/modules -DCMAKE_C
 RUN cmake --build .
 
 RUN make install
+
+
+RUN cd /code
+
+RUN git clone https://github.com/strasdat/Sophus
+
+RUN cd Sophus && mkdir build && cd build \
+    && cmake .. && cmake --build . && make install
+
+
+RUN cd /code
+
+RUN git clone https://github.com/fmtlib/fmt
+
+RUN cd fmt && mkdir build && cd build \
+    && cmake .. && cmake --build . && make install
+
+
+COPY . /code
+
+RUN rm -r build
+
+RUN /code/build.sh

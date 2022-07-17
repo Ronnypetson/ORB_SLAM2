@@ -1,0 +1,17 @@
+build
+
+build/*
+
+debug
+
+debug/*
+
+Examples/Epipolar/*
+
+Thirdparty/DBoW2/build/*
+
+Thirdparty/DBoW2/build
+
+Thirdparty/g2o/build/*
+
+Thirdparty/g2o/build
