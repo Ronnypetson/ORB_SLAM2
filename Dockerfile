@@ -57,16 +57,21 @@ RUN cd Sophus && mkdir build && cd build \
     && cmake .. && cmake --build . && make install
 
 
-RUN cd /code
+# RUN cd /code
 
-RUN git clone https://github.com/fmtlib/fmt
+# RUN git clone https://github.com/fmtlib/fmt
 
-RUN cd fmt && mkdir build && cd build \
-    && cmake .. && cmake --build . && make install
+# # RUN git clone https://github.com/phprus/fmt
 
+# RUN cd fmt && git checkout issue-2746-intel \
+#     && mkdir build && cd build \
+#     && cmake .. && cmake --build . && make install
 
-COPY . /code
 
 RUN rm -r build
 
-RUN /code/build.sh
+RUN mkdir /code/ORBSLAM2
+
+COPY . /code/ORBSLAM2
+
+RUN cd /code/ORBSLAM2 && sh build.sh
