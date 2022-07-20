@@ -86,9 +86,9 @@ configure_file(config.h.in ${g2o_SOURCE_DIR}/config.h)
 
 find_package(OpenCV 3.0 QUIET)
 if(NOT OpenCV_FOUND)
-   find_package(OpenCV 4.6.0 QUIET)
+   find_package(OpenCV 2.4.3 QUIET)
    if(NOT OpenCV_FOUND)
-      message(FATAL_ERROR "OpenCV > 2.4.3 not found.")
+      message(FATAL_ERROR "OpenCV >= 2.4.3 not found.")
    endif()
 endif()
 
