@@ -57,7 +57,15 @@ RUN cd fmt && git checkout issue-2746-intel \
     && mkdir build && cd build \
     && cmake .. && cmake --build . && make install
 
-### OpenCV 3.0.0
+### FFmpeg
+# RUN cd /code
+# RUN git clone https://github.com/FFmpeg/FFmpeg.git
+# RUN cd FFmpeg && ./configure --prefix=`pwd`/install \
+#     --enable-pic --disable-doc --disable-static --enable-shared \
+#     --enable-gpl --enable-nonfree --enable-postproc --disable-x86asm \
+#     && make install -j4
+
+### OpenCV 3.2.0
 RUN cd /code
 RUN apt-get install -y libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
 RUN apt-get install -y python3 python3-pip libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev
@@ -69,14 +77,20 @@ RUN add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security ma
     && apt update && apt install -y libjasper1 libjasper-dev
 RUN pip install numpy
 RUN apt install -y wget unzip
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/refs/tags/3.0.0.zip
+RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/refs/tags/3.2.0.zip
 RUN unzip opencv.zip
-RUN cd opencv-3.0.0 \
+RUN cd opencv-3.2.0 \
     && sed -i.bak 's/dumpversion/dumpfullversion/' cmake/OpenCVDetectCXXCompiler.cmake \
+    && sed '21 {s/^/#/}' cmake/OpenCVCompilerOptions.cmake > cmake/_OpenCVCompilerOptions.cmake \
+    && mv cmake/_OpenCVCompilerOptions.cmake cmake/OpenCVCompilerOptions.cmake \
     && mkdir build && cd build \
-    && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -Wno-dev .. \
+#    && PKG_CONFIG_PATH=/FFmpeg/install/lib/pkgconfig \
+    && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DCMAKE_CXX_STANDARD=14 -Wno-dev .. \
+    -DWITH_FFMPEG=OFF \
+# -DENABLE_PRECOMPILED_HEADERS=OFF 
+#   && make opencv_modules -j4 && ldd lib/libopencv_videoio.so \
     && make -j4 && make install
-# -DCMAKE_CXX_STANDARD=14
 
 ### ORBSLAM2
 RUN rm -r build
