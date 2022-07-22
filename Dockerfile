@@ -52,8 +52,9 @@ RUN cd Sophus && mkdir build && cd build \
 ### FMT
 RUN cd /code
 # RUN git clone https://github.com/fmtlib/fmt
+# f441484 # issue-2746-intel
 RUN git clone https://github.com/phprus/fmt
-RUN cd fmt && git checkout issue-2746-intel \
+RUN cd fmt && git checkout bdfec1d \
     && mkdir build && cd build \
     && cmake .. && cmake --build . && make install
 
@@ -82,6 +83,7 @@ RUN unzip opencv.zip
 RUN cd opencv-3.2.0 \
     && sed -i.bak 's/dumpversion/dumpfullversion/' cmake/OpenCVDetectCXXCompiler.cmake \
     && sed '21 {s/^/#/}' cmake/OpenCVCompilerOptions.cmake > cmake/_OpenCVCompilerOptions.cmake \
+    && sed -i.bak '730s/char\* str/const char\* str/' modules/python/src2/cv2.cpp \
     && mv cmake/_OpenCVCompilerOptions.cmake cmake/OpenCVCompilerOptions.cmake \
     && mkdir build && cd build \
 #    && PKG_CONFIG_PATH=/FFmpeg/install/lib/pkgconfig \
@@ -93,7 +95,7 @@ RUN cd opencv-3.2.0 \
     && make -j4 && make install
 
 ### ORBSLAM2
-RUN rm -r build
+# RUN rm -r build
 RUN mkdir /code/ORBSLAM2
 COPY . /code/ORBSLAM2
 RUN cd /code/ORBSLAM2 && sh build.sh
